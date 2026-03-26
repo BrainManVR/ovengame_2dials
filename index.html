@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Crust Pizza - Dial Calibration</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Lora:ital,wght@0,400;0,700;1,400&display=swap');
+        
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background-color: #0f172a;
+            color: #e2e8f0;
+            overflow-x: hidden;
+        }
+
+        /* CRT Scanline effect */
+        .crt-overlay::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 20;
+            background-size: 100% 4px, 3px 100%;
+            pointer-events: none;
+            opacity: 0.4;
+        }
+
+        .dial-container {
+            user-select: none;
+            touch-action: none;
+        }
+
+        .dial-svg {
+            cursor: pointer;
+            filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
+        }
+
+        .dial-label {
+            font-size: 6px;
+            font-weight: bold;
+            fill: #64748b;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 flex flex-col items-center">
+
+    <!-- Header -->
+    <header class="w-full max-w-5xl flex flex-col md:flex-row justify-between items-center mb-6 border-b border-slate-700 pb-4 gap-4">
+        <div>
+            <h1 class="text-3xl font-bold text-amber-400 flex items-center gap-3">
+                <span>🚀</span> Cosmic Crust Pizzaria
+            </h1>
+            <p class="text-slate-400 mt-1">Orbital Oven Calibration System v1.3 (Dual Variable Input)</p>
+        </div>
+        <div class="bg-slate-800 p-3 rounded-lg border border-slate-600 min-w-[200px]">
+            <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Current Order</p>
+            <p class="text-emerald-400 font-bold">Xenospore Base</p>
+            <p id="target-display" class="text-sm text-slate-200">Target: 470°C @ 30s</p>
+        </div>
+    </header>
+
+    <!-- Main Game Interface -->
+    <main class="w-full max-w-5xl bg-black p-4 md:p-6 rounded-xl border-4 border-slate-700 shadow-2xl relative">
+        
+        <!-- Oscilloscope Canvas Container -->
+        <div class="bg-[#051105] rounded-lg overflow-hidden border-2 border-slate-800 relative shadow-inner crt-overlay">
+            <canvas id="ovenCanvas" width="1000" height="420" class="w-full h-auto block"></canvas>
+        </div>
+
+        <!-- Formula Display -->
+        <div class="flex justify-center mt-6 mb-2 relative z-30">
+            <div class="bg-slate-900 px-8 py-4 rounded-xl border-2 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.2)] text-center">
+                <p class="text-sm md:text-xl font-bold text-emerald-400 tracking-wide whitespace-nowrap">
+                    Temp = (Time × <span id="formula-m" class="text-amber-400 bg-amber-400/10 px-2 py-1 rounded">0</span>) + <span id="formula-c" class="text-sky-400 bg-sky-400/10 px-2 py-1 rounded">20</span>°C
+                </p>
+            </div>
+        </div>
+
+        <!-- Dual Control Section -->
+        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- Dial 1: Gradient -->
+            <div class="bg-slate-800 p-6 rounded-lg border border-slate-700 flex items-center gap-4">
+                <div class="flex-1">
+                    <label class="text-lg font-bold text-amber-400 flex items-center gap-2 mb-1">
+                        <span>⚡</span> BakeBoost (m)
+                    </label>
+                    <p class="text-xs text-slate-400 mb-4">Adjusts heat intensity.</p>
+                    <div class="bg-slate-900 p-3 rounded border border-slate-600 inline-block">
+                        <span id="m-display" class="text-3xl font-bold text-emerald-400 font-mono">0</span>
+                    </div>
+                </div>
+                <div class="dial-container">
+                    <svg id="dial-m" class="dial-svg" width="120" height="120" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="45" fill="#1e293b" stroke="#334155" stroke-width="2" />
+                        <g id="ticks-m" stroke="#475569" stroke-width="0.5"></g>
+                        <circle cx="50" cy="50" r="30" fill="#334155" stroke="#94a3b8" stroke-width="1" />
+                        <g id="pointer-m"><rect x="48" y="22" width="4" height="12" rx="2" fill="#f59e0b" /></g>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Dial 2: Intercept -->
+            <div class="bg-slate-800 p-6 rounded-lg border border-slate-700 flex items-center gap-4">
+                <div class="flex-1">
+                    <label class="text-lg font-bold text-sky-400 flex items-center gap-2 mb-1">
+                        <span>🌡️</span> Room Temp (c)
+                    </label>
+                    <p class="text-xs text-slate-400 mb-4">Starting room temperature (0°C - 40°C).</p>
+                    <div class="bg-slate-900 p-3 rounded border border-slate-600 inline-block">
+                        <span id="c-display" class="text-3xl font-bold text-sky-400 font-mono">20</span><span class="text-sky-400 font-mono">°</span>
+                    </div>
+                </div>
+                <div class="dial-container">
+                    <svg id="dial-c" class="dial-svg" width="120" height="120" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="45" fill="#1e293b" stroke="#334155" stroke-width="2" />
+                        <g id="ticks-c" stroke="#475569" stroke-width="0.5"></g>
+                        <circle cx="50" cy="50" r="30" fill="#334155" stroke="#0ea5e9" stroke-width="1" />
+                        <g id="pointer-c"><rect x="48" y="22" width="4" height="12" rx="2" fill="#0ea5e9" /></g>
+                    </svg>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Feedback Panel -->
+        <div id="feedback-panel" class="mt-6 p-4 rounded-lg text-center transition-all duration-300 bg-slate-800 border-2 border-slate-700">
+            <h2 id="feedback-status" class="text-xl font-bold text-slate-300 mb-1">System Standby</h2>
+            <p id="feedback-msg" class="text-slate-400">
+                Adjust dials to reach <span class="text-emerald-400 font-bold">470°C</span> at <span class="text-white">30s</span>.
+            </p>
+        </div>
+
+    </main>
+
+    <script>
+        const canvas = document.getElementById('ovenCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const mDisplay = document.getElementById('m-display');
+        const cDisplay = document.getElementById('c-display');
+        const formulaM = document.getElementById('formula-m');
+        const formulaC = document.getElementById('formula-c');
+        
+        const feedbackPanel = document.getElementById('feedback-panel');
+        const feedbackStatus = document.getElementById('feedback-status');
+        const feedbackMsg = document.getElementById('feedback-msg');
+
+        // State
+        let bakeBoost = 0; // m
+        let startTemp = 20; // c
+        
+        const targetTemp = 470;
+        const targetTime = 30;
+
+        function init() {
+            setupDial('dial-m', 'ticks-m', 'pointer-m', 0, 30, (val) => {
+                bakeBoost = val;
+                updateUI();
+            });
+            setupDial('dial-c', 'ticks-c', 'pointer-c', 0, 40, (val) => {
+                startTemp = val;
+                updateUI();
+            });
+            updateUI();
+            window.addEventListener('resize', draw);
+        }
+
+        function setupDial(svgId, ticksId, pointerId, min, max, callback) {
+            const svg = document.getElementById(svgId);
+            const ticksGroup = document.getElementById(ticksId);
+            const pointer = document.getElementById(pointerId);
+            
+            // Create ticks
+            for (let i = min; i <= max; i += (max > 35 ? 5 : 2)) {
+                const angle = -140 + ((i - min) / (max - min)) * 280;
+                const rad = (angle - 90) * Math.PI / 180;
+                const x1 = 50 + 34 * Math.cos(rad);
+                const y1 = 50 + 34 * Math.sin(rad);
+                const x2 = 50 + 39 * Math.cos(rad);
+                const y2 = 50 + 39 * Math.sin(rad);
+                
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("x1", x1); line.setAttribute("y1", y1);
+                line.setAttribute("x2", x2); line.setAttribute("y2", y2);
+                line.setAttribute("stroke", i % 10 === 0 ? "#94a3b8" : "#475569");
+                ticksGroup.appendChild(line);
+
+                if (i % 10 === 0) {
+                    const tx = 50 + 43 * Math.cos(rad);
+                    const ty = 50 + 43 * Math.sin(rad);
+                    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    text.setAttribute("x", tx); text.setAttribute("y", ty);
+                    text.setAttribute("class", "dial-label");
+                    text.setAttribute("text-anchor", "middle");
+                    text.setAttribute("dominant-baseline", "middle");
+                    text.textContent = i;
+                    ticksGroup.appendChild(text);
+                }
+            }
+
+            const updatePointer = (val) => {
+                const angle = -140 + ((val - min) / (max - min)) * 280;
+                pointer.setAttribute("transform", `rotate(${angle}, 50, 50)`);
+            };
+
+            let isDragging = false;
+            const handleInteract = (e) => {
+                const rect = svg.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                let angle = Math.atan2(clientY - centerY, clientX - centerX) * 180 / Math.PI + 90;
+                if (angle > 180) angle -= 360;
+                
+                let percent = (angle + 140) / 280;
+                percent = Math.max(0, Math.min(1, percent));
+                const val = Math.round(min + percent * (max - min));
+                
+                updatePointer(val);
+                callback(val);
+            };
+
+            svg.addEventListener('mousedown', () => isDragging = true);
+            window.addEventListener('mousemove', (e) => isDragging && handleInteract(e));
+            window.addEventListener('mouseup', () => isDragging = false);
+            svg.addEventListener('touchstart', (e) => { e.preventDefault(); isDragging = true; handleInteract(e); }, {passive:false});
+            window.addEventListener('touchmove', (e) => isDragging && handleInteract(e), {passive:false});
+            window.addEventListener('touchend', () => isDragging = false);
+
+            // Initial position
+            if (svgId === 'dial-c') updatePointer(20);
+            else updatePointer(0);
+        }
+
+        function updateUI() {
+            mDisplay.innerText = bakeBoost;
+            cDisplay.innerText = startTemp;
+            formulaM.innerText = bakeBoost;
+            formulaC.innerText = startTemp;
+
+            const currentTempAtTarget = (targetTime * bakeBoost) + startTemp;
+            const isPerfect = currentTempAtTarget === targetTemp;
+
+            if (isPerfect) {
+                feedbackPanel.className = "mt-6 p-6 rounded-lg text-center bg-emerald-900/50 border-2 border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.3)] animate-pulse";
+                feedbackStatus.innerText = "TARGET LOCKED!";
+                feedbackStatus.className = "font-bold text-emerald-400 mb-1";
+                feedbackMsg.innerHTML = `Ideal bake achieved at ${currentTempAtTarget}°C! <button class='ml-4 bg-emerald-500 text-black px-4 py-1 rounded-full text-xs font-bold hover:bg-white transition-colors'>INITIATE BAKE</button>`;
+            } else {
+                feedbackPanel.className = "mt-6 p-4 rounded-lg text-center bg-slate-800 border-2 border-slate-700";
+                feedbackStatus.innerText = "Calibration Required";
+                feedbackStatus.className = "text-xl font-bold text-slate-300 mb-1";
+                const diff = currentTempAtTarget > targetTemp ? 'Too Hot!' : 'Too Cold!';
+                feedbackMsg.innerHTML = `Expected at 30s: <span class="text-amber-400 font-bold">${currentTempAtTarget}°C</span> (${diff})`;
+            }
+            draw();
+        }
+
+        function draw() {
+            const width = canvas.width;
+            const height = canvas.height;
+            const bottomMargin = 35; 
+            const topMargin = 55; 
+            const maxY = 500; // Scaled down to 500 to emphasize intercept changes
+
+            ctx.fillStyle = '#051105';
+            ctx.fillRect(0, 0, width, height);
+
+            // Math Banner
+            ctx.fillStyle = 'rgba(74, 246, 38, 0.1)';
+            ctx.fillRect(0, 0, width, topMargin);
+            ctx.strokeStyle = '#4af626';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(0, 0, width, topMargin);
+
+            ctx.fillStyle = '#fff';
+            ctx.font = 'italic 18px "Lora", serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Equation Calibration: ', width / 2 - 80, 35);
+            
+            ctx.fillStyle = '#fbbf24'; 
+            ctx.font = 'bold italic 22px "Lora", serif';
+            ctx.fillText(`y = ${bakeBoost}x + ${startTemp}`, width / 2 + 100, 35);
+
+            // Grid
+            ctx.strokeStyle = '#1a3a1a';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (let x = 0; x <= 60; x += 10) {
+                const cx = (x / 60) * width;
+                ctx.moveTo(cx, topMargin); ctx.lineTo(cx, height - bottomMargin);
+            }
+            for (let y = 0; y <= maxY; y += 50) {
+                const cy = (height - bottomMargin) - ((y / maxY) * (height - bottomMargin - topMargin));
+                ctx.moveTo(0, cy); ctx.lineTo(width, cy);
+            }
+            ctx.stroke();
+
+            // Labels
+            ctx.fillStyle = 'rgba(74, 246, 38, 0.5)';
+            ctx.font = '11px "JetBrains Mono"';
+            ctx.textAlign = 'center';
+            for (let x = 0; x <= 60; x += 10) {
+                ctx.fillText(x + 's', (x / 60) * width, height - 12);
+            }
+            ctx.textAlign = 'left';
+            for (let y = 0; y <= maxY; y += 100) {
+                const cy = (height - bottomMargin) - ((y / maxY) * (height - bottomMargin - topMargin));
+                if (cy < topMargin + 10) continue;
+                ctx.fillText(y + '°C', 8, cy - 4);
+            }
+
+            // Target Point
+            const targetX = (targetTime / 60) * width;
+            const targetY = (height - bottomMargin) - ((targetTemp / maxY) * (height - bottomMargin - topMargin));
+            const currentTempAtTarget = (targetTime * bakeBoost) + startTemp;
+            const isPerfect = currentTempAtTarget === targetTemp;
+
+            // Target Marker (Crosshair)
+            ctx.strokeStyle = isPerfect ? '#fff' : '#ff003c';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(targetX - 10, targetY); ctx.lineTo(targetX + 10, targetY);
+            ctx.moveTo(targetX, targetY - 10); ctx.lineTo(targetX, targetY + 10);
+            ctx.stroke();
+
+            // Graph Line
+            ctx.save();
+            ctx.beginPath();
+            // Clip the canvas so lines exceeding 500 degrees hide under the banner
+            ctx.rect(0, topMargin, width, height - topMargin);
+            ctx.clip();
+
+            ctx.beginPath();
+            ctx.strokeStyle = '#4af626';
+            ctx.lineWidth = 3;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#4af626';
+            for (let x = 0; x <= 60; x++) {
+                const y = (x * bakeBoost) + startTemp;
+                const cx = (x / 60) * width;
+                const cy = (height - bottomMargin) - ((y / maxY) * (height - bottomMargin - topMargin));
+                
+                if (x === 0) ctx.moveTo(cx, cy);
+                else ctx.lineTo(cx, cy);
+            }
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            ctx.restore();
+            
+            // Intercept Highlight
+            ctx.fillStyle = '#38bdf8';
+            ctx.beginPath();
+            const interceptY = (height - bottomMargin) - ((startTemp / maxY) * (height - bottomMargin - topMargin));
+            ctx.arc(0, interceptY, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
